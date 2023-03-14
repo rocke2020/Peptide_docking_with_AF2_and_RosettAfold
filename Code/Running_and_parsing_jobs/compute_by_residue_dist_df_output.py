@@ -25,11 +25,9 @@ ic.configureOutput(includeContext=True, argToStringFunction=lambda _: str(_))
 from pathlib import Path
 
 
-pdb_file = sys.argv[1]
-logger.info('%s', pdb_file)
 # 1awr_CI
-input_pdb_id_chains = sys.argv[2]
-fasta_tab = pd.read_csv('Data/Source_Data/fasta_tab.csv')
+fasta_tab_file = 'Data/Source_Data/fasta_tab.csv'
+fasta_df = pd.read_csv(fasta_tab_file)
 out_root = Path('output')
 
 
@@ -67,7 +65,7 @@ def prepare_native(native_pdb_file, pdb_id_chains):
 
 # function to process and prepare each model into a dictionary of chains ids, sequences (rec and pep), lengths etc. 
 
-def prepare_models_and_compute_distance(model_pdb, dict_of_native):
+def prepare_models_and_compute_distance(model_pdb, dict_of_native, analysis_out_dir):
     model_pdb = str(model_pdb)
     mpdb = PandasPdb()
     mpdb.read_pdb(model_pdb)
@@ -153,58 +151,73 @@ def make_rms_lddt_tab(columns_lst, lddt_series, rms_series, i_model):
     return full
 
 
-def get_output_dir(pdb_id_chains):
+def get_output_dir(full_seq):
     """  """
-    pdb_id, pep_seq, prot_seq = fasta_tab[fasta_tab['pdb_id'] == pdb_id_chains].values.tolist()[0]
-    full_seq = prot_seq + ':' + pep_seq
     hash_full_seq = cf.get_hash(full_seq)
     out_dir = out_root / hash_full_seq
     return out_dir
 
 
-# Main - run the whole thing
-native_dict = prepare_native(pdb_file, input_pdb_id_chains)
-dict_copy = copy.deepcopy(native_dict)
-
-series_lst =[]
-ld_vs_rms_lst = []
-lddt_lst = []
-out_dir = get_output_dir(input_pdb_id_chains)
-analysis_out_dir = out_dir / 'analysis'
-analysis_out_dir.mkdir(exist_ok=1)
-model_lst = list(out_dir.glob("rename*.pdb")) # replace the prefix with relevant model name
-ic(model_lst)
-for i in range(len(model_lst)):
-    model_stem = model_lst[i].stem
-    first_model_occur = model_stem.find("model_")
-    row_name = model_stem[first_model_occur:(first_model_occur+7)] #+7 e.g. gets the "model_5" part of the output name
-    ic(row_name)
+def process_one_pdb_file(pdb_file, input_pdb_id_chains, full_seq):
+    native_dict = prepare_native(pdb_file, input_pdb_id_chains)
     dict_copy = copy.deepcopy(native_dict)
-    i_series, lddt_series, pep_seq_model = prepare_models_and_compute_distance(model_lst[i], dict_copy)
-    columns_lst = [pep_seq_model[x] for x in range(len(pep_seq_model))]
 
-    i_series.name=row_name
-    series_lst.append(i_series)
-    
-    lddt_series.name=row_name
-    lddt_lst.append(lddt_series)
-    
-    ld_vs_rms_lst.append(make_rms_lddt_tab(columns_lst,lddt_series,i_series,row_name))
+    series_lst =[]
+    ld_vs_rms_lst = []
+    lddt_lst = []
+    out_dir = get_output_dir(full_seq)
+    analysis_out_dir = out_dir / 'analysis'
+    analysis_out_dir.mkdir(exist_ok=1)
+    model_lst = list(out_dir.glob("rename*.pdb")) # replace the prefix with relevant model name
+    ic(model_lst)
+    for i in range(len(model_lst)):
+        model_stem = model_lst[i].stem
+        first_model_occur = model_stem.find("model_")
+        row_name = model_stem[first_model_occur:(first_model_occur+7)] #+7 e.g. the "model_5" part of the output name
+        ic(row_name)
+        dict_copy = copy.deepcopy(native_dict)
+        i_series, lddt_series, pep_seq_model = prepare_models_and_compute_distance(
+            model_lst[i], dict_copy, analysis_out_dir)
+        columns_lst = [pep_seq_model[x] for x in range(len(pep_seq_model))]
 
-    del dict_copy
+        i_series.name=row_name
+        series_lst.append(i_series)
+        
+        lddt_series.name=row_name
+        lddt_lst.append(lddt_series)
+        
+        ld_vs_rms_lst.append(make_rms_lddt_tab(columns_lst,lddt_series,i_series,row_name))
 
-# save outputs as csv
-by_resi_df = pd.concat(series_lst,axis=1).transpose()
-by_resi_df.columns = columns_lst
-by_resi_df_file = analysis_out_dir / 'by_residue_rms.csv'
-by_resi_df.to_csv(by_resi_df_file,sep=",", index=False)
+        del dict_copy
 
-lddt_df = pd.concat(lddt_lst, axis=1).transpose()
-lddt_df.columns = columns_lst
-lddt_df_file = analysis_out_dir / 'lddt_by_residue.csv'
-lddt_df.to_csv(lddt_df_file, sep=",", index=False)
+    # save outputs as csv
+    by_resi_df = pd.concat(series_lst,axis=1).transpose()
+    by_resi_df.columns = columns_lst
+    by_resi_df_file = analysis_out_dir / 'by_residue_rms.csv'
+    by_resi_df.to_csv(by_resi_df_file,sep=",", index=False)
 
-rms_lddt_tab = pd.concat(ld_vs_rms_lst)
-rms_lddt_tab['pdb'] = input_pdb_id_chains
-rms_lddt_tab.to_csv((analysis_out_dir / 'rms_vs_lddt_comparison_by_residue.csv'), sep=",", index=False)
-logger.info('end')
+    lddt_df = pd.concat(lddt_lst, axis=1).transpose()
+    lddt_df.columns = columns_lst
+    lddt_df_file = analysis_out_dir / 'lddt_by_residue.csv'
+    lddt_df.to_csv(lddt_df_file, sep=",", index=False)
+
+    rms_lddt_tab = pd.concat(ld_vs_rms_lst)
+    rms_lddt_tab['pdb'] = input_pdb_id_chains
+    rms_lddt_tab.to_csv((analysis_out_dir / 'rms_vs_lddt_comparison_by_residue.csv'), sep=",", index=False)
+
+
+def main():
+    """  """
+    for i, row in fasta_df.iterrows():
+        pdb_id_chains, peptide_fasta, protein_fasta = row.values.tolist()
+        # if pdb_id_chains != '1awr_CI': continue
+        pdb_id = pdb_id_chains.split('_')[0]
+        pdb_file = f'data/pdb/pdb_files/{pdb_id}.pdb'
+        full_seq = protein_fasta + ':' + peptide_fasta
+        process_one_pdb_file(pdb_file, pdb_id_chains, full_seq)
+
+
+if __name__ == "__main__":
+    main()
+    logger.info('end')
+    pass
