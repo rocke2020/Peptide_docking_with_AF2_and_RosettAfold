@@ -71,7 +71,7 @@ group_model.add_argument('--num_samples', dest='num_samples', type=int, default=
 group_model.add_argument('--use_turbo', dest='use_turbo', action='store_true', default=True,
           help='Introduces a few modifications (compile once, swap params, adjust max_msa) to speedup and reduce memory requirements. Disable for default behavior.')
 
-group_msa.add_argument('--subsample_msa', dest='subsample_msa', action='store_true', help='subsample msa to avoid OOM error')
+group_msa.add_argument('--enable_subsample_msa', dest='enable_subsample_msa', action='store_true', help='subsample msa to avoid OOM error, only select max 10000 msa sequences')
 group_msa.add_argument('--just_msa', dest='just_msa', action='store_true', help='create MSA and exit')
 group_msa.add_argument('--no_use_env', dest='no_use_env', action='store_true', help='use environmental sequences?')
 group_msa.add_argument('--pair_msa', dest='pair_msa', action='store_true', help='pair msa for prokaryotic sequences')
@@ -118,7 +118,7 @@ tol = args.tol
 num_ensemble = args.num_ensemble
 num_samples = args.num_samples
 pair_msa = args.pair_msa
-subsample_msa = args.subsample_msa
+enable_subsample_msa = args.enable_subsample_msa
 
 use_turbo = args.use_turbo
 relax_all = args.relax_all
@@ -176,9 +176,15 @@ if len(seqs) != len(homooligomers):
 full_sequence = "".join([s*h for s,h in zip(seqs,homooligomers)])
 
 # prediction directory
-output_dir = Path(args.working_dir) / 'output' / cf.get_hash(sequence)
+ori_seq_hash = cf.get_hash(ori_sequence)
+output_dir = Path(args.working_dir) / 'output' / ori_seq_hash
 output_dir.mkdir(exist_ok=1, parents=1)
-output_dir = str(output_dir)
+
+if args.prefix is None and args.pdb_id_chains is not None:
+  args.prefix  = args.pdb_id_chains
+ori_sequence_file = output_dir / f'{args.prefix}-ori_sequence.txt'
+with open(ori_sequence_file, 'w', encoding='utf-8') as f:
+    f.write(ori_sequence)
 logger.info(f"working directory: {output_dir}")
 
 # print out params
@@ -206,7 +212,6 @@ if use_amber_relax:
   from alphafold.relax import utils
 
 
-
 aatypes = set('ACDEFGHIKLMNPQRSTVWY')  # 20 standard aatypes
 if not set(full_sequence).issubset(aatypes):
   raise Exception(f'Input sequence contains non-amino acid letters: {set(sequence) - aatypes}. AlphaFold only supports 20 standard amino acids as inputs.')
@@ -219,14 +224,13 @@ if len(full_sequence) > 1400:
   logger.info(f"WARNING: For a typical Google-Colab-GPU (16G) session, the max total length is ~1300 residues. You are at {len(full_sequence)}! Run Alphafold may crash.")
 
 # tmp directory
-prefix = cf.get_hash(sequence)
 os.makedirs('tmp', exist_ok=True)
-prefix = os.path.join('tmp',prefix)
 
 # --- Search against genetic databases ---
 out_seq_file = output_dir / 'target.fasta'
 with open(out_seq_file, 'w') as f:
   f.write(f'>query\n{sequence}')
+output_dir = str(output_dir)
 
 # Run the search against chunks of genetic databases (since the genetic
 # databases don't fit in Colab ramdisk).
@@ -259,31 +263,29 @@ elif msa_method == "custom_a3m":
     logger.info("ERROR: the length of msa does not match input sequence")
 
 else:
-  os.makedirs('tmp', exist_ok=True)
   seqs = ori_sequence.replace('/', '').split(':')
 
   _blank_seq = ["-" * len(seq) for seq in seqs]
   _blank_mtx = [[0] * len(seq) for seq in seqs]
 
 
-def _pad(ns, vals, mode):
-  if mode == "seq": _blank = _blank_seq.copy()
-  if mode == "mtx": _blank = _blank_mtx.copy()
-  if isinstance(ns, list):
-    for n, val in zip(ns, vals): _blank[n] = val
-  else:
-    _blank[ns] = vals
-  if mode == "seq": return "".join(_blank)
-  if mode == "mtx": return sum(_blank, [])
+  def _pad(ns, vals, mode):
+    if mode == "seq": _blank = _blank_seq.copy()
+    if mode == "mtx": _blank = _blank_mtx.copy()
+    if isinstance(ns, list):
+      for n, val in zip(ns, vals): _blank[n] = val
+    else:
+      _blank[ns] = vals
+    if mode == "seq": return "".join(_blank)
+    if mode == "mtx": return sum(_blank, [])
 
 
   # gather msas
   msas, deletion_matrices = [], []
   if msa_method == "mmseqs2":
-    prefix = cf.get_hash("".join(seqs))
-    prefix = os.path.join('tmp', prefix)
+    features_prefix = os.path.join(output_dir, 'features')
     logger.info(f"running mmseqs2")
-    A3M_LINES = cf.run_mmseqs2(seqs, prefix, filter=True)
+    A3M_LINES = cf.run_mmseqs2(seqs, features_prefix, filter=True)
 
   for n, seq in enumerate(seqs):
     # tmp directory
@@ -293,9 +295,13 @@ def _pad(ns, vals, mode):
     if msa_method == "mmseqs2":
       # run mmseqs2
       a3m_lines = A3M_LINES[n]
-      # logger.info('a3m_lines: %s', a3m_lines)
       msa_obj = parsers.parse_a3m(a3m_lines)
       msa, mtx = msa_obj.sequences, msa_obj.deletion_matrix
+      deduped_msa = list(dict.fromkeys(msa))
+      if n == 1:
+        logger.info('peptide deduped msa, len %s, first 3:  %s', len(deduped_msa), deduped_msa[:3])
+      else:
+        logger.info('protein deduped msa, len %s, first 3:  %s', len(deduped_msa), deduped_msa[:3])
       msas_, mtxs_ = [msa], [mtx]
 
     # pad sequences
@@ -331,9 +337,9 @@ assert len(seq_lenghs) == 1, logger.info('%s', seq_lenghs)
 deduped_full_msa = list(dict.fromkeys(full_msa))
 total_msa_size = len(deduped_full_msa)
 if msa_method == "mmseqs2":
-  logger.info(f'\n{total_msa_size} Sequences Found in Total (after filtering)\n')
+  logger.info(f'\n{total_msa_size} de-duplicated Sequences Found in Total (after filtering)')
 else:
-  logger.info(f'\n{total_msa_size} Sequences Found in Total\n')
+  logger.info(f'\n{total_msa_size} Sequences Found in Total')
 
 msa_arr = np.array([list(seq) for seq in deduped_full_msa])
 num_alignments, num_res = msa_arr.shape
@@ -394,12 +400,16 @@ def _placeholder_template_feats(num_templates_, num_res_):
 num_res = len(full_sequence)
 feature_dict = {}
 feature_dict.update(pipeline.make_sequence_features(full_sequence, 'test', num_res))
+logger.info('len(msas_mod) %s', len(msas_mod))
+logger.info('msas_mod[0] first 3: %s', msas_mod[0][:3])
+logger.info('msas_mod[1] first 3: %s', msas_mod[1][:3])
 msa_objects = []
 for msa, deletion_matrix in zip(msas_mod, deletion_matrices_mod):
   msa_objects.append(parsers.Msa(msa, deletion_matrix, descriptions=[''] * len(msa)))
 feature_dict.update(pipeline.make_msa_features(msa_objects))
 if not use_turbo:
   feature_dict.update(_placeholder_template_feats(0, num_res))
+
 
 def subsample_msa(F, N=10000, random_seed=0):
   '''subsample msa to avoid running out of memory'''
@@ -419,15 +429,39 @@ def subsample_msa(F, N=10000, random_seed=0):
   else:
     return F
 
-################################
-# set chain breaks
-################################
+
+"""
+# set chain breaks, add big enough number to residue index to indicate chain breaks
+03-14 10:32:11 alphafold2_advanced.py 441: [  0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17
+  18  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35
+  36  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53
+  54  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71
+  72  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89
+  90  91  92  93  94  95  96  97  98  99 100 101 102 103 104 105 106 107
+ 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125
+ 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143
+ 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161
+ 162 163 164 165 166 167 168 169]
+03-14 10:32:11 alphafold2_advanced.py 443: [  0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17
+  18  19  20  21  22  23  24  25  26  27  28  29  30  31  32  33  34  35
+  36  37  38  39  40  41  42  43  44  45  46  47  48  49  50  51  52  53
+  54  55  56  57  58  59  60  61  62  63  64  65  66  67  68  69  70  71
+  72  73  74  75  76  77  78  79  80  81  82  83  84  85  86  87  88  89
+  90  91  92  93  94  95  96  97  98  99 100 101 102 103 104 105 106 107
+ 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125
+ 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143
+ 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161
+ 162 163 364 365 366 367 368 369]
+"""
+
 Ls = []
 for seq, h in zip(ori_sequence.split(":"),homooligomers):
   Ls += [len(s) for s in seq.split("/")] * h
-
+# logger.info('%s', Ls) # [164, 6]
 Ls_plot = sum([[len(seq)]*h for seq, h in zip(seqs, homooligomers)], [])
+# logger.info('%s', feature_dict['residue_index'])
 feature_dict['residue_index'] = cf.chain_break(feature_dict['residue_index'], Ls)
+# logger.info('%s', feature_dict['residue_index'])
 
 ###########################
 # run alphafold
@@ -507,7 +541,7 @@ for num, model_name in enumerate(model_names):  # for each model
     # predict
     key = f"{name}_seed_{seed}"
 
-    if subsample_msa:
+    if enable_subsample_msa:
       logger.info('Subsampling MSA')
       sampled_feats_dict = subsample_msa(feature_dict, random_seed=seed)
       processed_feature_dict = model_runner.process_features(sampled_feats_dict, random_seed=seed)
