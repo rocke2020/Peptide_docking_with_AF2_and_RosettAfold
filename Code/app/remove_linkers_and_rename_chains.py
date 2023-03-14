@@ -30,7 +30,7 @@ def rename_one_pdb_file_chain_AB(pdb_file, pdb_id_chains, pep_seq, prot_seq):
         pdb_id_chains: 1awr_CI
     """
     ppdb = PandasPdb()
-    ppdb.read_pdb(pdb_file)
+    ppdb.read_pdb(str(pdb_file))
 
     ic(pdb_id_chains)
     ic(prot_seq)
@@ -88,7 +88,7 @@ def rename_one_pdb_file_chain_AB(pdb_file, pdb_id_chains, pep_seq, prot_seq):
 
     # change the receptor to chain A
     receptor_start = df[(df['residue_number']>=linker_lst[0]) & (df['residue_number']<=linker_lst[1])].index[0]
-    receptor_end = df[(df['residue_number']>=linker_lst[0]) & (df['residue_number']<=linker_lst[1])].index[-1] + 2
+    receptor_end = df[(df['residue_number']>=linker_lst[0]) & (df['residue_number']<=linker_lst[1])].index[-1] + 1
     ic(receptor_start)
     ic(receptor_end)
     df.loc[receptor_start: receptor_end,'chain_id']='A'
@@ -96,7 +96,7 @@ def rename_one_pdb_file_chain_AB(pdb_file, pdb_id_chains, pep_seq, prot_seq):
     # change the peptide to chain B
     pep_start = df[(df['residue_number']>=linker_lst[2]) & (df['residue_number']<=linker_lst[3])].index[0]
     # include TER at the end
-    pep_end = df[(df['residue_number']>=linker_lst[2]) & (df['residue_number']<=linker_lst[3])].index[-1] + 2
+    pep_end = df[(df['residue_number']>=linker_lst[2]) & (df['residue_number']<=linker_lst[3])].index[-1] + 1
     ic(pep_start)
     ic(pep_end)
     df.loc[pep_start: pep_end,'chain_id']='B'
@@ -113,7 +113,7 @@ def rename_one_pdb_file_chain_AB(pdb_file, pdb_id_chains, pep_seq, prot_seq):
     others.at[1, 'entry'] = others.loc[1]['entry'].replace(' A ', ' B ')
     ic(others)
 
-    out_file = Path(pdb_file).with_stem(f'rename_AB_chains_{Path(pdb_file).stem}')
+    out_file = pdb_file.with_stem(f'rename_AB_chains_{pdb_file.stem}')
     ppdb.to_pdb(out_file)
 
 
@@ -121,6 +121,7 @@ def batch_rename():
     """  """
     for i, row in fasta_df.iterrows():
         pdb_id_chains, peptide_fasta, protein_fasta = row.values.tolist()
+        # if pdb_id_chains != '1awr_CI': continue
         full_seq = protein_fasta+':'+peptide_fasta
         hash_full_seq = cf.get_hash(full_seq)
         out_pdb_dir =  Path('output') / hash_full_seq
