@@ -205,7 +205,7 @@ for seq_i, (sequence, pdb_id_chains) in enumerate(zip(input_sequences, pdb_id_ch
     continue
   # prediction directory
   ori_seq_hash = cf.get_hash(ori_sequence)
-  output_dir = Path(args.working_dir) / 'output' / ori_seq_hash
+  output_dir = Path(args.working_dir) / 'output' / f'{pdb_id_chains}-{ori_seq_hash}'
   output_dir.mkdir(exist_ok=1, parents=1)
 
   ori_sequence_file = output_dir / f'{pdb_id_chains}-ori_sequence.txt'

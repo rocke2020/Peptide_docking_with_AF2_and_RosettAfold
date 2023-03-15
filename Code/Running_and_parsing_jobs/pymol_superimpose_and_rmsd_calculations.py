@@ -4,17 +4,39 @@
 # peptide RMSD both by superimposing and aligning by sequence. It also creates a PyMol
 # session with the interface residues colored. Input id a director with a native and
 # models that start with 'linker_removed'.
-
+import os, sys
+sys.path.append(os.path.abspath('.'))
+from utils.log_util import logger
+import colabfold.colabfold as cf
+from biopandas.pdb import PandasPdb
+import pandas as pd
+import os.path
+import pandas as pd
+import Bio
+from Bio import SeqIO
+import pickle
+import re
+from Bio import pairwise2
+import copy
+import glob
+import numpy as np
+from icecream import ic
+ic.configureOutput(includeContext=True, argToStringFunction=lambda _: str(_))
+from pathlib import Path
+from pandas import DataFrame
+from Code.Running_and_parsing_jobs.alphafold2_utils import check_seq
 from pymol import cmd, stored
-import interfaceResidues
+# import interfaceResidues
 import pandas as pd
 import os
-import re
-import glob
-import Focus_alignment
-import sys
+# import Focus_alignment
+
 
 # load native and select receptor and peptide
+fasta_tab_file = 'Data/Source_Data/fasta_tab.csv'
+fasta_df = pd.read_csv(fasta_tab_file)
+out_root = Path('output')
+
 input_dir=sys.argv[1]
 print(input_dir)
 complex=os.path.basename(input_dir.rstrip('/'))
@@ -35,6 +57,7 @@ cmd.select("native_rec", f'native and chain {rec_chain}')
 cmd.select("native_pep", f'native and chain {pep_chain}')
 
 # select interface by first selecting receptor residues within 4A of peptide, then selecting peptide residues within 4A of receptor interface
+# merge the 2 selections
 cmd.select('native_rec_interface', 'byres native_rec within 4 of native_pep')
 cmd.select('interface_native', 'native_rec_interface + byres native_pep within 4 of native_rec_interface')
 
@@ -55,68 +78,68 @@ model_re = re.compile("model_[0-9]")
 
 # load models 1by1 select receptor and peptide
 for model_file in glob.glob(os.path.join(input_dir, 'linker_removed*.pdb')):
-	model_name = os.path.basename(model_file).replace('.pdb', '')
-	rank = int(str(rank_re.search(model_name).group(0)).replace('rank_', ''))
-	model_no = int(str(model_re.search(model_name).group(0)).replace('model_', ''))
-	metrics_for_a_model = [model_name, complex, rec_chain, pep_chain, rank, model_no]
+    model_name = os.path.basename(model_file).replace('.pdb', '')
+    rank = int(str(rank_re.search(model_name).group(0)).replace('rank_', ''))
+    model_no = int(str(model_re.search(model_name).group(0)).replace('model_', ''))
+    metrics_for_a_model = [model_name, complex, rec_chain, pep_chain, rank, model_no]
 
-	cmd.load(model_file, model_name)
-	cmd.select("afold_rec", f'{model_name} and chain A')
-	cmd.select("afold_pep", f'{model_name} and chain B')
+    cmd.load(model_file, model_name)
+    cmd.select("afold_rec", f'{model_name} and chain A')
+    cmd.select("afold_pep", f'{model_name} and chain B')
 
-	# align peptide chains
-	super_alignment_pep = cmd.super('afold_pep', 'native_pep')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_pep])
+    # align peptide chains
+    super_alignment_pep = cmd.super('afold_pep', 'native_pep')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_pep])
 
-	seq_alignment_pep = cmd.align('afold_pep', 'native_pep')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_pep])
+    seq_alignment_pep = cmd.align('afold_pep', 'native_pep')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_pep])
 
-	# align peptide chains backbone
-	super_alignment_pep = cmd.super('afold_pep and backbone', 'native_pep and backbone')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_pep])
+    # align peptide chains backbone
+    super_alignment_pep = cmd.super('afold_pep and backbone', 'native_pep and backbone')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_pep])
 
-	seq_alignment_pep = cmd.align('afold_pep and backbone', 'native_pep and backbone')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_pep])
+    seq_alignment_pep = cmd.align('afold_pep and backbone', 'native_pep and backbone')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_pep])
 
 
-	# super receptor chains
-	super_alignment_rec = cmd.super('afold_rec', 'native_rec')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_rec])
+    # super receptor chains
+    super_alignment_rec = cmd.super('afold_rec', 'native_rec')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_rec])
 
-	# save the superimposed structure
-	cmd.select('model_to_save', model_name)
-	super_filename=f'{model_name}_superimposed.pdb'
-	print(super_filename)
-	save_to_file = os.path.join(input_dir, super_filename)
-	cmd.save(save_to_file, model_name, format='pdb')
+    # save the superimposed structure
+    cmd.select('model_to_save', model_name)
+    super_filename=f'{model_name}_superimposed.pdb'
+    print(super_filename)
+    save_to_file = os.path.join(input_dir, super_filename)
+    cmd.save(save_to_file, model_name, format='pdb')
 
-	# super receptor chain backbones
-	super_alignment_rec = cmd.super('afold_rec and backbone', 'native_rec and backbone')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_rec])
+    # super receptor chain backbones
+    super_alignment_rec = cmd.super('afold_rec and backbone', 'native_rec and backbone')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_alignment_rec])
 
-	# calculate rmsd-s
-	seq_alignment_rec = cmd.align('afold_rec', 'native_rec')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_rec])
+    # calculate rmsd-s
+    seq_alignment_rec = cmd.align('afold_rec', 'native_rec')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_rec])
 
-	# calculate rmsd by backbone
-	seq_alignment_rec = cmd.align('afold_rec and backbone', 'native_rec and backbone')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_rec])
+    # calculate rmsd by backbone
+    seq_alignment_rec = cmd.align('afold_rec and backbone', 'native_rec and backbone')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in seq_alignment_rec])
 
-	super_complex = cmd.super(model_name, 'native')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_complex])
+    super_complex = cmd.super(model_name, 'native')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_complex])
 
-	super_complex = cmd.super(f'{model_name} and backbone', 'native and backbone')
-	metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_complex])
+    super_complex = cmd.super(f'{model_name} and backbone', 'native and backbone')
+    metrics_for_a_model += tuple([float("{0:.2f}".format(n)) for n in super_complex])
 
-	cmd.color('brown', model_name)
-	# color receptor interface of model in yellow
-	cmd.color('yellow', 'interface_rec_afold')
+    cmd.color('brown', model_name)
+    # color receptor interface of model in yellow
+    cmd.color('yellow', 'interface_rec_afold')
 
-	# color peptide of model in cyan
-	cmd.color('cyan', 'afold_pep')
-	cmd.show(representation='sticks', selection='afold_pep')
+    # color peptide of model in cyan
+    cmd.color('cyan', 'afold_pep')
+    cmd.show(representation='sticks', selection='afold_pep')
 
-	metrics.append(metrics_for_a_model)
+    metrics.append(metrics_for_a_model)
 
 cmd.set_name('native', complex)
 cmd.save(f'{input_dir}/{complex}.pse', format='pse')
@@ -126,11 +149,53 @@ colnames = ['model_name', 'pdb_id', 'rec_chain', 'pep_chain', 'rank', 'model_no'
 colnames_for_aln = ['rms_after_ref', 'no_aln_atoms_after_ref', 'ref_cycles', 'rms_before_ref', 'no_aln_atoms_before_ref', 'raw_score', 'no_aln_residues']
 
 for type in ['_super_pep', '_align_seq_pep', '_super_pep_bb', '_align_seq_pep_bb', '_super_rec', '_super_rec_bb', '_align_seq_rec', '_align_seq_rec_bb', '_complex', '_complex_bb']:
-	new_colnames = [s + type for s in colnames_for_aln]
-	colnames = colnames + new_colnames
+    new_colnames = [s + type for s in colnames_for_aln]
+    colnames = colnames + new_colnames
 
 
 # saving calculated metrics
 out_csv_dir = os.path.dirname(input_dir.rstrip('/'))
 metrics_df = pd.DataFrame(metrics, columns = colnames)
 metrics_df.to_csv(os.path.join(out_csv_dir, complex + '.csv'))
+
+
+
+def main():
+    """  """
+    out_sum_file = f'Code/app/data/calc_sum.csv'
+    good_rms_threshold = 2.5
+    results = []
+    for i, row in fasta_df.iterrows():
+        pdb_id_chains, peptide_fasta, protein_fasta = row.values.tolist()
+        # 2fmf_AB 1awr_CI 2h9m_CD
+        if pdb_id_chains != '2fmf_AB': continue
+        pdb_id = pdb_id_chains.split('_')[0]
+        pdb_file = f'data/pdb/pdb_files/{pdb_id}.pdb'
+        full_seq = protein_fasta + ':' + peptide_fasta
+        logger.info('%s', protein_fasta)
+        logger.info('%s', peptide_fasta)
+        merged_seq = protein_fasta + peptide_fasta
+        if not check_seq(merged_seq):
+            logger.info('pdb_id_chains %s is invalid in seq', pdb_id_chains)
+            continue
+        try:
+            min_values = calc_rmsd_lddt_for_peptide(pdb_file, pdb_id_chains, full_seq)
+            min_values.insert(0, pdb_id_chains)
+            results.append(min_values)
+        except Exception as identifier:
+            logger.exception(
+                'pdb_id_chains %s has sth wrong on calc_rms_lddt_for_peptide:\n %s', pdb_id_chains, identifier)
+
+    df = DataFrame(
+        results, columns=['pdb_id_chains', 'model_name', 'min_avg_rmsd', 'plddt']
+    )
+    logger.info('%s', df)
+    logger.info('\n%s', df.describe())
+    df.to_csv(out_sum_file, index=False, sep=',')
+
+
+if __name__ == "__main__":
+    # main()
+    # ic(select_best_model_by_least_rms('output/0c31d4ef287c460d0518f6d4c3d8753e5cb0eece/analysis/rms_vs_lddt_comparison_by_residue.csv'))
+    logger.info('end')
+    pass

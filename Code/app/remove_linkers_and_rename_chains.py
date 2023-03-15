@@ -113,24 +113,36 @@ def rename_one_pdb_file_chain_AB(pdb_file, pdb_id_chains, pep_seq, prot_seq):
     others.at[1, 'entry'] = others.loc[1]['entry'].replace(' A ', ' B ')
     ic(others)
 
-    out_file = pdb_file.with_stem(f'rename_AB_chains_{pdb_file.stem}')
+    out_file = pdb_file.with_stem(f'_{pdb_file.stem}')
     ppdb.to_pdb(out_file)
 
 
-def batch_rename():
+def batch_rename_chains():
     """  """
     for i, row in fasta_df.iterrows():
         pdb_id_chains, peptide_fasta, protein_fasta = row.values.tolist()
         # if pdb_id_chains != '1awr_CI': continue
         full_seq = protein_fasta+':'+peptide_fasta
         hash_full_seq = cf.get_hash(full_seq)
-        out_pdb_dir =  Path('output') / hash_full_seq
+        out_pdb_dir =  Path('output') / f'{pdb_id_chains}-{hash_full_seq}'
         if out_pdb_dir.exists():
             for pdb_file in out_pdb_dir.glob('*.pdb'):
                 if pdb_file.stem.startswith('rename'): continue
                 rename_one_pdb_file_chain_AB(pdb_file, pdb_id_chains, peptide_fasta, protein_fasta)
 
+def rename_out_dir():
+    for i, row in fasta_df.iterrows():
+        pdb_id_chains, peptide_fasta, protein_fasta = row.values.tolist()
+        # if pdb_id_chains != '1awr_CI': continue
+        full_seq = protein_fasta+':'+peptide_fasta
+        hash_full_seq = cf.get_hash(full_seq)
+        orig_out_pdb_dir =  Path('output') / hash_full_seq
+        out_pdb_dir =  Path('output') / f'{pdb_id_chains}-{hash_full_seq}'
+        if orig_out_pdb_dir.exists():
+            os.rename(str(orig_out_pdb_dir), str(out_pdb_dir))
+
 
 if __name__ == "__main__":
-    batch_rename()
+    batch_rename_chains()
+    # rename_out_dir()
     ic('end')
