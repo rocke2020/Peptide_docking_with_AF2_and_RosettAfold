@@ -8,17 +8,6 @@ from icecream import ic
 ic.configureOutput(includeContext=True, argToStringFunction=lambda _: str(_))
 
 
-def get_pdb_pdb_seq(selection):
-    """ 
-    selection, e.g.
-        f'native and chain {native_pep_chain}'
-     """
-    fasta = cmd.get_fastastr(selection=selection)
-    seq_str = parse_fasta(fasta)[0][0]
-    
-    return seq_str
-
-
 def process_native_pdb(pdb_file, pdb_id_chains, analysis_out_dir):
     """ pdb_id_chains: 2fmf_AB """
     pdb_id, native_rec_chain, native_pep_chain = parse_pdb_id_chains(pdb_id_chains)
@@ -131,6 +120,16 @@ def calc_rmsd_by_pymol_v2(
     metrics_df = pd.DataFrame(metrics, columns=col_names)
     metrics_file = analysis_out_dir / (pdb_id_chains + '.csv')
     metrics_df.to_csv(metrics_file, index=False)
+
+
+def get_pdb_pdb_seq(selection):
+    """ 
+    selection, e.g.
+        f'native and chain {native_pep_chain}'
+     """
+    fasta = cmd.get_fastastr(selection=selection)
+    seq_str = parse_fasta(fasta)[0][0]
+    return seq_str
 
 
 def calc_rmsd_by_pymol_v1(pdb_file:str, pdb_id_chains:str, pdb_input_dir, analysis_out_dir, process_native_only=False):

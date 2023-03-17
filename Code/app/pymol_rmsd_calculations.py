@@ -17,7 +17,6 @@ from pandas import DataFrame
 from peptide_utils.aa_utils import is_natural_only_supper
 from peptide_utils.af_utils import get_hash
 from peptide_utils.pymol_utils import calc_rmsd_by_pymol_v2
-from pymol import cmd
 import pandas as pd
 import os
 
