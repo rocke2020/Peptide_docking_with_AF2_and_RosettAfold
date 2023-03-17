@@ -1,3 +1,4 @@
+""" colab fold only utils """
 import re, random
 from pathlib import Path
 import json
@@ -30,18 +31,6 @@ def check_seq(full_sequence):
     logger.exception(f"WARNING: For a typical Google-Colab-GPU (16G) session, the max total length is ~1300 residues. You are at {len(full_sequence)}! Run Alphafold may crash.")
   return 1
 
-#############################
-# define input features
-#############################
-def _placeholder_template_feats(num_templates_, num_res_):
-  return {
-      'template_aatype': np.zeros([num_templates_, num_res_, 22], np.float32),
-      'template_all_atom_masks': np.zeros([num_templates_, num_res_, 37, 3], np.float32),
-      'template_all_atom_positions': np.zeros([num_templates_, num_res_, 37], np.float32),
-      'template_domain_names': np.zeros([num_templates_], np.float32),
-      'template_sum_probs': np.zeros([num_templates_], np.float32),
-  }
-
 
 def subsample_msa(F, N=10000, random_seed=0):
   '''subsample msa to avoid running out of memory'''
@@ -62,10 +51,8 @@ def subsample_msa(F, N=10000, random_seed=0):
     return F
 
 
-###########################
-# run alphafold
-###########################
 def parse_results(prediction_result, processed_feature_dict):
+  """ alphafold results """
   b_factors = prediction_result['plddt'][:,None] * prediction_result['structure_module']['final_atom_mask']
   dist_bins = jax.numpy.append(0,prediction_result["distogram"]["bin_edges"])
   dist_logits = prediction_result["distogram"]["logits"]
@@ -81,6 +68,6 @@ def parse_results(prediction_result, processed_feature_dict):
 
 
 def read_pdb_id_chains_lst():
-    """  """
+    """ pdb_id is actually pdb_id_chains """
     fasta_tab = pd.read_csv('Data/Source_Data/fasta_tab.csv')
     return fasta_tab['pdb_id'].tolist(),  fasta_tab['protein_fasta'],  fasta_tab['peptide_fasta']

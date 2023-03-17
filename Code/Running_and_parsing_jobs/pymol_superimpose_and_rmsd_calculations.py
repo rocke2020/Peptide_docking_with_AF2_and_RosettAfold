@@ -24,7 +24,7 @@ from icecream import ic
 ic.configureOutput(includeContext=True, argToStringFunction=lambda _: str(_))
 from pathlib import Path
 from pandas import DataFrame
-from Code.Running_and_parsing_jobs.alphafold2_utils import check_seq
+from peptide_utils.cf_utils import check_seq
 from pymol import cmd, stored
 # import interfaceResidues
 import pandas as pd

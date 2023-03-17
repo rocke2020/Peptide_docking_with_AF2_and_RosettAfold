@@ -1,3 +1,6 @@
+from utils.log_util import logger
+
+
 aminoacids = ["A", "C", "D", "E", "F", "G", "H", "I", "L", "M", "N", "P", "K", "Q", "R", "S", "T", "V", "W", "Y"]
 
 basic_aa_1chars_to_3chars_lower = {
@@ -150,6 +153,8 @@ def is_natural_only_supper(seq):
     if isinstance(seq, str) and seq:
         for aa in seq:
             if aa not in aminoacids:
+                logger.info('aa %s is not natural', aa)
                 return False
         return True
+    logger.info('seq %s is not valid', seq)
     return False

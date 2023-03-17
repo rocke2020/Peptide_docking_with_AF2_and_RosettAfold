@@ -24,7 +24,7 @@ ic.configureOutput(includeContext=True, argToStringFunction=lambda _: str(_))
 from pathlib import Path
 from pandas import DataFrame
 import dataclasses
-from Code.Running_and_parsing_jobs.alphafold2_utils import check_seq
+from peptide_utils.cf_utils import check_seq
 
 
 fasta_tab_file = 'Data/Source_Data/fasta_tab.csv'

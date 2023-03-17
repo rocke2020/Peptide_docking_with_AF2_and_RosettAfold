@@ -29,7 +29,7 @@ from alphafold.data import parsers
 from alphafold.data import pipeline
 from alphafold.common import protein
 import re
-from Code.Running_and_parsing_jobs.alphafold2_utils import (
+from peptide_utils.cf_utils import (
   check_seq, _placeholder_template_feats, subsample_msa, parse_results, read_pdb_id_chains_lst)
 
 
