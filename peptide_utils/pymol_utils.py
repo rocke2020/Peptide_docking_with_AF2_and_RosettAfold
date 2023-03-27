@@ -8,8 +8,10 @@ from icecream import ic
 ic.configureOutput(includeContext=True, argToStringFunction=lambda _: str(_))
 
 
-def process_native_pdb(pdb_file, pdb_id_chains, analysis_out_dir):
-    """ pdb_id_chains: 2fmf_AB """
+def process_native_pdb(pdb_file, pdb_id_chains, analysis_out_dir, around_dist=10):
+    """ 
+    pdb_id_chains: 2fmf_AB 
+    """
     pdb_id, native_rec_chain, native_pep_chain = parse_pdb_id_chains(pdb_id_chains)
     cmd.reinitialize()
     cmd.load(pdb_file, 'native')
@@ -26,8 +28,8 @@ def process_native_pdb(pdb_file, pdb_id_chains, analysis_out_dir):
 
     # select interface by first selecting receptor residues within 10A of peptide, then selecting peptide residues within 10A of receptor interface
     # merge the 2 selections by "+"
-    cmd.select('interface_rec', 'byres native_rec within 10 of native_pep')
-    cmd.select('interface_native', 'interface_rec + byres native_pep within 10 of interface_rec')
+    cmd.select('interface_rec', f'byres native_rec within {around_dist} of native_pep')
+    cmd.select('interface_native', f'interface_rec + byres native_pep within {around_dist} of interface_rec')
 
     # color receptor and their interface of native
     cmd.color('green', 'native_rec')

@@ -95,7 +95,7 @@ def main(enable_check=0):
         try:
             if not enable_check:
                 pdb_input_dir, analysis_out_dir = get_af_output_dir(pdb_id_chains, full_seq, version='2')
-                calc_rmsd_by_pymol_v2(pdb_file, pdb_id_chains, pdb_input_dir, analysis_out_dir, process_native_only=0)
+                calc_rmsd_by_pymol_v2(pdb_file, pdb_id_chains, pdb_input_dir, analysis_out_dir, process_native_only=1)
             else:
                 check(pdb_id_chains, full_seq)
         except Exception as identifier:
